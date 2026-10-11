@@ -3,150 +3,92 @@
 #include <string>
 #include <vector>
 #include <algorithm>
-#include <unordered_map>
+#include <map>
 #include <set>
 #include <sstream>
-#include <iomanip>
-#include <sys/stat.h>
-#include <sys/types.h>
 
 class FileStorageDB {
 private:
-    static const int NUM_BUCKETS = 1024;
-    std::string base_dir = ".";
+    std::string data_file = "database.txt";
     
-    // Hash function to map keys to buckets
-    size_t hash_key(const std::string& key) {
-        std::hash<std::string> hasher;
-        return hasher(key) % NUM_BUCKETS;
-    }
-    
-    // Get file path for a bucket
-    std::string get_bucket_path(size_t bucket_id) {
-        return "bucket_" + std::to_string(bucket_id) + ".txt";
-    }
-    
-    // Ensure storage directory exists
-    void ensure_directory() {
-        // Current directory always exists
-    }
-    
-    // Check if key-value pair exists in bucket file
-    bool exists_in_bucket(size_t bucket_id, const std::string& key, int value) {
-        std::string filepath = get_bucket_path(bucket_id);
-        std::ifstream file(filepath);
+    // Read all data from file
+    std::map<std::string, std::set<int>> read_all_data() {
+        std::map<std::string, std::set<int>> data;
+        std::ifstream file(data_file);
         
         if (!file.is_open()) {
-            return false;
+            return data;
         }
         
         std::string line;
-        std::string target = key + ":" + std::to_string(value);
         while (std::getline(file, line)) {
-            if (line == target) {
-                return true;
-            }
-        }
-        return false;
-    }
-    
-    // Append key-value pair to bucket file
-    void append_to_bucket(size_t bucket_id, const std::string& key, int value) {
-        std::string filepath = get_bucket_path(bucket_id);
-        std::ofstream file(filepath, std::ios::app);
-        
-        if (file.is_open()) {
-            file << key << ":" << value << "\n";
-        }
-    }
-    
-    // Remove specific key-value pair from bucket file
-    void remove_from_bucket(size_t bucket_id, const std::string& key, int value) {
-        std::string filepath = get_bucket_path(bucket_id);
-        std::string temp_filepath = filepath + ".tmp";
-        
-        std::ifstream file(filepath);
-        std::ofstream temp_file(temp_filepath);
-        
-        if (!file.is_open() || !temp_file.is_open()) {
-            return;
-        }
-        
-        std::string target = key + ":" + std::to_string(value);
-        std::string line;
-        bool found = false;
-        
-        while (std::getline(file, line)) {
-            if (line != target) {
-                temp_file << line << "\n";
-            } else {
-                found = true;
-            }
-        }
-        
-        file.close();
-        temp_file.close();
-        
-        if (found) {
-            remove(filepath.c_str());
-            rename(temp_filepath.c_str(), filepath.c_str());
-        } else {
-            remove(temp_filepath.c_str());
-        }
-    }
-    
-    // Get all values for a key from bucket file
-    std::vector<int> get_values_from_bucket(size_t bucket_id, const std::string& key) {
-        std::string filepath = get_bucket_path(bucket_id);
-        std::ifstream file(filepath);
-        std::vector<int> values;
-        
-        if (!file.is_open()) {
-            return values;
-        }
-        
-        std::string line;
-        std::string prefix = key + ":";
-        
-        while (std::getline(file, line)) {
-            if (line.substr(0, prefix.length()) == prefix) {
+            size_t colon_pos = line.find(':');
+            if (colon_pos != std::string::npos) {
+                std::string key = line.substr(0, colon_pos);
+                std::string value_str = line.substr(colon_pos + 1);
                 try {
-                    int value = std::stoi(line.substr(prefix.length()));
-                    values.push_back(value);
+                    int value = std::stoi(value_str);
+                    data[key].insert(value);
                 } catch (...) {
-                    // Skip invalid values
+                    // Skip invalid lines
                 }
             }
         }
         
-        std::sort(values.begin(), values.end());
-        return values;
+        return data;
+    }
+    
+    // Write all data to file
+    void write_all_data(const std::map<std::string, std::set<int>>& data) {
+        std::ofstream file(data_file);
+        
+        if (!file.is_open()) {
+            return;
+        }
+        
+        for (auto it = data.begin(); it != data.end(); ++it) {
+            const std::string& key = it->first;
+            const std::set<int>& values = it->second;
+            for (auto vit = values.begin(); vit != values.end(); ++vit) {
+                file << key << ":" << *vit << "\n";
+            }
+        }
     }
     
 public:
-    FileStorageDB() {
-        ensure_directory();
-    }
-    
     void insert(const std::string& key, int value) {
-        size_t bucket_id = hash_key(key);
+        auto data = read_all_data();
         
         // Check if key-value pair already exists
-        if (exists_in_bucket(bucket_id, key, value)) {
+        if (data[key].find(value) != data[key].end()) {
             return; // Already exists, no need to insert
         }
         
-        append_to_bucket(bucket_id, key, value);
+        data[key].insert(value);
+        write_all_data(data);
     }
     
     void delete_entry(const std::string& key, int value) {
-        size_t bucket_id = hash_key(key);
-        remove_from_bucket(bucket_id, key, value);
+        auto data = read_all_data();
+        
+        auto it = data.find(key);
+        if (it != data.end()) {
+            it->second.erase(value);
+            if (it->second.empty()) {
+                data.erase(it);
+            }
+            write_all_data(data);
+        }
     }
     
     std::vector<int> find(const std::string& key) {
-        size_t bucket_id = hash_key(key);
-        return get_values_from_bucket(bucket_id, key);
+        auto data = read_all_data();
+        
+        auto it = data.find(key);
+        if (it != data.end()) {
+            return std::vector<int>(it->second.begin(), it->second.end());
+        }
+        return {};
     }
 };
 
