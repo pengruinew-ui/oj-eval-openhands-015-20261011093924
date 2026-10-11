@@ -13,7 +13,7 @@
 class FileStorageDB {
 private:
     static const int NUM_BUCKETS = 1024;
-    std::string base_dir = "db_storage";
+    std::string base_dir = ".";
     
     // Hash function to map keys to buckets
     size_t hash_key(const std::string& key) {
@@ -23,15 +23,12 @@ private:
     
     // Get file path for a bucket
     std::string get_bucket_path(size_t bucket_id) {
-        return base_dir + "/bucket_" + std::to_string(bucket_id) + ".txt";
+        return "bucket_" + std::to_string(bucket_id) + ".txt";
     }
     
     // Ensure storage directory exists
     void ensure_directory() {
-        struct stat st = {0};
-        if (stat(base_dir.c_str(), &st) == -1) {
-            mkdir(base_dir.c_str(), 0755);
-        }
+        // Current directory always exists
     }
     
     // Check if key-value pair exists in bucket file
